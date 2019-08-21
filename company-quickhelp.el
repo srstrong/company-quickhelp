@@ -1,6 +1,7 @@
 ;;; company-quickhelp.el --- Popup documentation for completion candidates
 
 ;; Copyright (C) 2016, Lars Andersen
+;; Copyright (C) 2019, Matthew Carter <m@ahungry.com>
 
 ;; Author: Lars Andersen <expez@expez.com>
 ;; URL: https://www.github.com/expez/company-quickhelp
@@ -39,6 +40,7 @@
 (require 'company)
 (require 'pos-tip)
 (require 'cl-lib)
+(require 'popup)
 
 (defgroup company-quickhelp nil
   "Documentation popups for `company-mode'"
@@ -171,7 +173,7 @@ currently active `company' completion candidate."
   (when (company-quickhelp-pos-tip-available-p)
     (pos-tip-hide)))
 
-(defun company-quickhelp--show ()
+(defun company-quickhelp--show-gui ()
   (when (company-quickhelp-pos-tip-available-p)
     (company-quickhelp--cancel-timer)
     (while-no-input
@@ -210,9 +212,38 @@ currently active `company' completion candidate."
               (pos-tip-show doc fg-bg (overlay-start ovl) nil timeout width nil
                             (+ overlay-width overlay-position) 1))))))))
 
+(defun company-quickhelp--get-tty-point ()
+  "Get the point to place cursor for our TTY."
+  (let ((points (- (window-end) (window-start))))
+     (+ (window-start) (/ points 4))))
+
+(defun company-quickhelp--show-tty ()
+  "Show the popup for our TTY userbase.
+
+It really didn't prove to be that difficult, and even if `popup-tip'
+could exhibit buggy behavior under some scenarios, some functionality
+is better than none functionality."
+  (company-quickhelp--cancel-timer)
+  (while-no-input
+    (let* ((selected (nth company-selection company-candidates))
+           (doc (let ((inhibit-message t))
+                  (company-quickhelp--doc selected))))
+      (when (stringp doc)
+        (with-no-warnings
+          (popup-tip doc
+                     :point (company-quickhelp--get-tty-point)
+                     :around t
+                     :scroll-bar t
+                     :margin t))))))
+
+(defun company-quickhelp--show ()
+  (if (display-graphic-p)
+      (company-quickhelp--show-gui)
+    (company-quickhelp--show-tty)))
+
 (defun company-quickhelp--set-timer ()
   (when (or (null company-quickhelp--timer)
-        (eq this-command #'company-quickhelp-manual-begin))
+            (eq this-command #'company-quickhelp-manual-begin))
     (setq company-quickhelp--timer
           (run-with-idle-timer company-quickhelp-delay nil
                                'company-quickhelp--show))))
